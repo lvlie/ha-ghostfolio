@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Ghostfolio",
+        "description": "Enter the URL of your Ghostfolio instance and the security/access token shown when your user was created.",
+        "data": {
+          "url": "URL",
+          "access_token": "Access token",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid access token",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This Ghostfolio instance is already configured."
+    }
+  }
+}

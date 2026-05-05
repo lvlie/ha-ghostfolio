@@ -1,0 +1,112 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    name: Validate with hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: pytest tests/test_coordinator.py -v
+
+  integration-test:
+    name: Spin up Ghostfolio + Home Assistant
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Start Ghostfolio (Postgres + Redis + app)
+        working-directory: tests/stack
+        run: |
+          docker compose up -d
+          echo "Waiting for Ghostfolio to become healthy..."
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3333/api/v1/health >/dev/null 2>&1; then
+              echo "Ghostfolio is up."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Ghostfolio failed to start in time."
+          docker compose logs
+          exit 1
+
+      - name: Bootstrap a Ghostfolio user with positions
+        id: bootstrap
+        run: |
+          python tests/stack/bootstrap_ghostfolio.py \
+            --url http://localhost:3333 \
+            --output ghostfolio.env
+          set -a
+          . ./ghostfolio.env
+          set +a
+          echo "GHOSTFOLIO_TOKEN=${GHOSTFOLIO_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Install Home Assistant
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          # Pin to a recent stable HA core release.
+          pip install "homeassistant==2024.10.4"
+
+      - name: Stage Home Assistant config with the integration loaded
+        run: |
+          python tests/stack/setup_ha_config.py \
+            --config-dir ha_config \
+            --url http://localhost:3333 \
+            --token "${GHOSTFOLIO_TOKEN}"
+
+      - name: Start Home Assistant and capture logs
+        run: |
+          . .venv/bin/activate
+          mkdir -p ha_config
+          # Run HA in the background and stop it once we've seen "Started" or hit the timeout.
+          python tests/stack/run_ha.py --config-dir ha_config --timeout 240 \
+            | tee ha.log
+
+      - name: Verify the integration loaded without errors
+        run: |
+          python tests/stack/check_logs.py ha.log
+
+      - name: Dump Ghostfolio logs on failure
+        if: failure()
+        working-directory: tests/stack
+        run: docker compose logs --no-color | tail -n 400
+
+      - name: Tear down Ghostfolio
+        if: always()
+        working-directory: tests/stack
+        run: docker compose down -v
