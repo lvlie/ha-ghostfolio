@@ -64,12 +64,13 @@ def main() -> int:
             if proc.stdout in r:
                 line = proc.stdout.readline()
                 if not line:
+                    # EOF, process ended unexpectedly or normally before timeout
                     break
 
                 sys.stdout.write(line)
                 sys.stdout.flush()
 
-                if DONE_MARKER in line:
+                if DONE_MARKER in line or ALT_READY_MARKER in line or READY_MARKER in line:
                     saw_done = True
 
                 # Once we see the "started" line, keep collecting logs for a few
