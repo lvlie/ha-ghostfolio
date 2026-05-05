@@ -73,6 +73,9 @@ jobs:
           set +a
           echo "GHOSTFOLIO_TOKEN=${GHOSTFOLIO_TOKEN}" >> "$GITHUB_ENV"
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y --no-install-recommends ffmpeg libturbojpeg0-dev
+
       - name: Install Home Assistant
         run: |
           python -m venv .venv
