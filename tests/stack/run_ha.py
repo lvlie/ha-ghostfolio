@@ -47,20 +47,9 @@ def main() -> int:
     saw_started = False
 
     try:
+        import select
         assert proc.stdout is not None
-        for line in proc.stdout:
-            sys.stdout.write(line)
-            sys.stdout.flush()
-
-            if DONE_MARKER in line:
-                saw_done = True
-
-            # Once we see the "started" line, keep collecting logs for a few
-            # seconds so we capture the coordinator's first refresh, then stop.
-            if saw_done and not saw_started:
-                saw_started = True
-                deadline = time.monotonic() + 20
-
+        while True:
             if saw_started and time.monotonic() > deadline:
                 break
 
@@ -70,6 +59,24 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 break
+
+            r, _, _ = select.select([proc.stdout], [], [], 1.0)
+            if proc.stdout in r:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
+                if DONE_MARKER in line:
+                    saw_done = True
+
+                # Once we see the "started" line, keep collecting logs for a few
+                # seconds so we capture the coordinator's first refresh, then stop.
+                if saw_done and not saw_started:
+                    saw_started = True
+                    deadline = time.monotonic() + 20
     finally:
         if proc.poll() is None:
             proc.send_signal(signal.SIGTERM)

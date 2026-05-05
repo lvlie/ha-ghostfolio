@@ -19,5 +19,12 @@
     "abort": {
       "already_configured": "This Ghostfolio instance is already configured."
     }
+  },
+  "entity": {
+    "sensor": {
+      "total_value": {
+        "name": "Total portfolio value"
+      }
+    }
   }
 }

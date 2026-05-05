@@ -76,7 +76,7 @@ class _GhostfolioBaseEntity(CoordinatorEntity[GhostfolioCoordinator], SensorEnti
     """Base class for all Ghostfolio sensors."""
 
     _attr_has_entity_name = True
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_state_class = SensorStateClass.TOTAL
     _attr_device_class = SensorDeviceClass.MONETARY
 
     def __init__(self, coordinator: GhostfolioCoordinator, entry_id: str) -> None:
@@ -100,7 +100,6 @@ class GhostfolioTotalValueSensor(_GhostfolioBaseEntity):
     def __init__(self, coordinator: GhostfolioCoordinator, entry_id: str) -> None:
         super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_total_value"
-        self._attr_name = "Total portfolio value"
 
     @property
     def native_value(self) -> float | None:
