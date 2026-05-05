@@ -21,7 +21,10 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          ignore: brands
+          # Skip repository-metadata checks that depend on GitHub repo settings
+          # (description, topics) and the HA brands repo (which we haven't
+          # submitted to). These should be set on the repo for real publication.
+          ignore: brands topics description
 
   unit:
     name: Unit tests
@@ -78,8 +81,10 @@ jobs:
           python -m venv .venv
           . .venv/bin/activate
           pip install --upgrade pip
-          # Pin to a recent stable HA core release.
-          pip install "homeassistant==2024.10.4"
+          # Pin to a recent stable HA core release. josepy<2 is required
+          # because acme<3 still references the removed ComparableX509 attr;
+          # without this pin HA crashes on import.
+          pip install "homeassistant==2024.10.4" "josepy<2.0"
 
       - name: Stage Home Assistant config with the integration loaded
         run: |
