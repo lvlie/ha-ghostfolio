@@ -21,10 +21,7 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # Skip repository-metadata checks that depend on GitHub repo settings
-          # (description, topics) and the HA brands repo (which we haven't
-          # submitted to). These should be set on the repo for real publication.
-          ignore: brands topics description
+          ignore: brands
 
   unit:
     name: Unit tests
@@ -81,10 +78,12 @@ jobs:
           python -m venv .venv
           . .venv/bin/activate
           pip install --upgrade pip
-          # Pin to a recent stable HA core release. josepy<2 is required
-          # because acme<3 still references the removed ComparableX509 attr;
-          # without this pin HA crashes on import.
-          pip install "homeassistant==2024.10.4" "josepy<2.0"
+          # Pin to a recent stable HA core release.
+          #   - josepy<2: acme<3 still references jose.ComparableX509 which
+          #     josepy 2.0 removed.
+          #   - aiodns>=3.2.0: aiohttp resolver passes extra args to
+          #     Channel.getaddrinfo() that older aiodns rejects.
+          pip install "homeassistant==2024.10.4" "josepy<2.0" "aiodns>=3.2.0"
 
       - name: Stage Home Assistant config with the integration loaded
         run: |
