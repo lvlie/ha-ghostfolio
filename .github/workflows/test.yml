@@ -81,9 +81,11 @@ jobs:
           # Pin to a recent stable HA core release.
           #   - josepy<2: acme<3 still references jose.ComparableX509 which
           #     josepy 2.0 removed.
-          #   - aiodns>=3.2.0: aiohttp resolver passes extra args to
-          #     Channel.getaddrinfo() that older aiodns rejects.
-          pip install "homeassistant==2024.10.4" "josepy<2.0" "aiodns>=3.2.0"
+          #   - aiodns>=3.2 + pycares>=4.5: aiodns 3.2 calls a Channel
+          #     .getaddrinfo() signature that only exists in pycares 4.5+;
+          #     without both pins HA's startup health-check resolver crashes.
+          pip install "homeassistant==2024.10.4" "josepy<2.0"
+          pip install --upgrade "aiodns>=3.2.0" "pycares>=4.5.0"
 
       - name: Stage Home Assistant config with the integration loaded
         run: |
