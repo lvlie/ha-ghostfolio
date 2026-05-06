@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.2] - 2026-05-06
+
+### Fixed
+- Total portfolio value sensor reported `USD` regardless of the user's actual base currency. The integration now reads the base currency from `/api/v1/user` (`settings.baseCurrency`) so the unit matches what Ghostfolio shows in its UI.
+
 ## [0.0.1] - 2026-05-05
 
 ### Added

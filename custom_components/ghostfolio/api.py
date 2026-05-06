@@ -106,6 +106,9 @@ class GhostfolioClient:
             return data.get("accounts", [])
         return data or []
 
+    async def async_get_user(self) -> dict[str, Any]:
+        return await self._get("/api/v1/user")
+
     async def async_get_details(self) -> dict[str, Any]:
         return await self._get("/api/v1/portfolio/details")
 

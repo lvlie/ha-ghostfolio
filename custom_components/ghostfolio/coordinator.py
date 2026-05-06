@@ -27,6 +27,7 @@ class GhostfolioCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
+            user = await self.client.async_get_user()
             details = await self.client.async_get_details()
         except GhostfolioAuthError as err:
             raise UpdateFailed(f"Authentication failed: {err}") from err
@@ -35,10 +36,23 @@ class GhostfolioCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except Exception as err:  # noqa: BLE001
             raise UpdateFailed(f"Unexpected error fetching portfolio: {err}") from err
 
-        return _normalise(details)
+        return _normalise(details, user)
 
 
-def _normalise(details: dict[str, Any]) -> dict[str, Any]:
+def _user_base_currency(user: dict[str, Any] | None) -> str | None:
+    if not isinstance(user, dict):
+        return None
+    settings = user.get("settings")
+    if isinstance(settings, dict):
+        currency = settings.get("baseCurrency")
+        if currency:
+            return currency
+    return user.get("baseCurrency")
+
+
+def _normalise(
+    details: dict[str, Any], user: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Reshape the raw /portfolio/details response into a stable structure.
 
     Output:
@@ -83,7 +97,12 @@ def _normalise(details: dict[str, Any]) -> dict[str, Any]:
     else:
         holdings_iter = list(holdings_raw.values())
 
-    base_currency = summary.get("baseCurrency") or summary.get("currency") or "USD"
+    base_currency = (
+        _user_base_currency(user)
+        or summary.get("baseCurrency")
+        or summary.get("currency")
+        or "USD"
+    )
     total_value = summary.get("currentValueInBaseCurrency")
     if total_value is None:
         total_value = summary.get("currentValue")
