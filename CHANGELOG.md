@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-05-06
+
+### Fixed
+- Config flow failed to load with `500 Internal Server Error` on Home Assistant 2024.12 and newer because the options flow assigned to `OptionsFlow.config_entry`, which is now a read-only property. The entry is now stored under a private attribute.
+- Replaced `SelectOptionDict(...)` constructor calls with plain dicts so the selector schema also builds on older HA releases that don't expose the typed-dict helper.
+
 ## [0.1.0] - 2026-05-06
 
 ### Added
