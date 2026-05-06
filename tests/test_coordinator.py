@@ -146,6 +146,29 @@ def test_normalise_with_per_account_holdings():
     assert aapl["value"] == 1000
 
 
+def test_normalise_uses_user_base_currency_when_summary_missing_it():
+    raw = {
+        "summary": {"currentValueInBaseCurrency": 1000.0},
+        "accounts": {},
+        "holdings": [],
+    }
+    user = {"settings": {"baseCurrency": "EUR"}}
+    result = _normalise(raw, user)
+    assert result["currency"] == "EUR"
+    assert result["total_value"] == 1000.0
+
+
+def test_normalise_user_currency_overrides_summary_default():
+    raw = {
+        "summary": {"baseCurrency": "USD", "currentValueInBaseCurrency": 1000.0},
+        "accounts": {},
+        "holdings": [],
+    }
+    user = {"settings": {"baseCurrency": "EUR"}}
+    result = _normalise(raw, user)
+    assert result["currency"] == "EUR"
+
+
 def test_normalise_falls_back_to_quantity_times_price():
     raw = {
         "summary": {},
