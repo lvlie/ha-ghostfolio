@@ -6,25 +6,57 @@ from typing import Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api import GhostfolioApiError, GhostfolioAuthError, GhostfolioClient
 from .const import (
     CONF_ACCESS_TOKEN,
+    CONF_SCAN_INTERVAL_MINUTES,
     CONF_URL,
     CONF_VERIFY_SSL,
+    DEFAULT_SCAN_INTERVAL_MINUTES,
     DEFAULT_URL,
     DOMAIN,
+    SCAN_INTERVAL_OPTIONS,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _scan_interval_selector() -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=[
+                SelectOptionDict(value=str(opt), label=f"{opt} minutes")
+                for opt in SCAN_INTERVAL_OPTIONS
+            ],
+            mode=SelectSelectorMode.DROPDOWN,
+        )
+    )
+
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_URL, default=DEFAULT_URL): str,
         vol.Required(CONF_ACCESS_TOKEN): str,
         vol.Optional(CONF_VERIFY_SSL, default=True): bool,
+        vol.Required(
+            CONF_SCAN_INTERVAL_MINUTES,
+            default=str(DEFAULT_SCAN_INTERVAL_MINUTES),
+        ): _scan_interval_selector(),
     }
 )
 
@@ -62,6 +94,11 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
                 _LOGGER.exception("Unexpected error validating Ghostfolio credentials")
                 errors["base"] = "unknown"
             else:
+                scan_interval = int(
+                    user_input.get(
+                        CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
+                    )
+                )
                 return self.async_create_entry(
                     title=f"Ghostfolio ({unique_id})",
                     data={
@@ -69,6 +106,7 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_ACCESS_TOKEN: user_input[CONF_ACCESS_TOKEN],
                         CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL, True),
                     },
+                    options={CONF_SCAN_INTERVAL_MINUTES: scan_interval},
                 )
 
         return self.async_show_form(
@@ -76,3 +114,41 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_USER_DATA_SCHEMA,
             errors=errors,
         )
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return GhostfolioOptionsFlow(config_entry)
+
+
+class GhostfolioOptionsFlow(OptionsFlow):
+    """Allow the user to change the scan interval after setup."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    CONF_SCAN_INTERVAL_MINUTES: int(
+                        user_input[CONF_SCAN_INTERVAL_MINUTES]
+                    )
+                },
+            )
+
+        current = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_SCAN_INTERVAL_MINUTES,
+                    default=str(current),
+                ): _scan_interval_selector(),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)
