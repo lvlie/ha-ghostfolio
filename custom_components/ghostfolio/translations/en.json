@@ -7,7 +7,8 @@
         "data": {
           "url": "URL",
           "access_token": "Access token",
-          "verify_ssl": "Verify SSL certificate"
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval_minutes": "Update interval"
         }
       }
     },
@@ -18,6 +19,16 @@
     },
     "abort": {
       "already_configured": "This Ghostfolio instance is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ghostfolio options",
+        "data": {
+          "scan_interval_minutes": "Update interval"
+        }
+      }
     }
   },
   "entity": {

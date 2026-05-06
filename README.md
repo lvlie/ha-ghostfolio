@@ -8,7 +8,9 @@ A custom [HACS](https://hacs.xyz/) integration that exposes data from a
 - Authenticates against a Ghostfolio instance using your **security / access
   token** (the one shown when your user was created, or available via *My
   Ghostfolio → Account → Security token*).
-- Polls `/api/v1/portfolio/details` every 15 minutes.
+- Polls `/api/v1/portfolio/details` on a configurable interval (5, 15, or 60
+  minutes; default **5**). The interval can be changed at any time from
+  *Settings → Devices & Services → Ghostfolio → Configure*.
 - Creates the following entities:
   - **`sensor.ghostfolio_total_portfolio_value`** – total portfolio value in
     your base currency.
@@ -41,6 +43,7 @@ the UI.
 | URL | Base URL of your Ghostfolio instance, e.g. `https://ghostfol.io` or `http://homeassistant.local:3333` |
 | Access token | The security token shown in *Account → Security token* |
 | Verify SSL | Disable for self-signed certificates |
+| Update interval | How often to poll Ghostfolio: 5, 15, or 60 minutes |
 
 ## Development & CI
 

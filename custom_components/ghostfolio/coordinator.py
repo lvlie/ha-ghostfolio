@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -16,12 +17,17 @@ _LOGGER = logging.getLogger(__name__)
 class GhostfolioCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetches portfolio data from Ghostfolio on a schedule."""
 
-    def __init__(self, hass: HomeAssistant, client: GhostfolioClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: GhostfolioClient,
+        update_interval: timedelta | None = None,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=DEFAULT_SCAN_INTERVAL,
+            update_interval=update_interval or DEFAULT_SCAN_INTERVAL,
         )
         self.client = client
 

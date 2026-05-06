@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.0] - 2026-05-06
+
+### Added
+- Configurable polling interval (5, 15, or 60 minutes) selectable during setup and editable afterwards via the integration's *Configure* options flow.
+
+### Changed
+- Default polling interval is now **5 minutes** (previously 15).
+- Positions whose current value is 0 are no longer registered as sensors when first seen, avoiding clutter from sold-out or empty holdings. Sensors that already exist are kept — they simply report 0 — so history and statistics are preserved.
+
 ## [0.0.2] - 2026-05-06
 
 ### Fixed

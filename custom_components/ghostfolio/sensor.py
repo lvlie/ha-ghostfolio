@@ -38,6 +38,17 @@ def _position_key(position: dict[str, Any]) -> str:
     return f"{account}::{symbol}"
 
 
+def _has_nonzero_value(position: dict[str, Any]) -> bool:
+    """Return True if the position has a meaningful (non-zero) value."""
+    value = position.get("value")
+    if value is None:
+        return False
+    try:
+        return float(value) != 0.0
+    except (TypeError, ValueError):
+        return False
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -55,6 +66,11 @@ async def async_setup_entry(
         for position in data.get("positions", []):
             key = _position_key(position)
             if key in known:
+                continue
+            if not _has_nonzero_value(position):
+                # Skip 0-valued positions on first sight so we don't litter
+                # the registry with sensors for sold-out / empty holdings.
+                # Existing sensors are preserved on purpose.
                 continue
             known.add(key)
             new_entities.append(

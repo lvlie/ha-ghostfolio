@@ -8,9 +8,12 @@ DOMAIN = "ghostfolio"
 CONF_URL = "url"
 CONF_ACCESS_TOKEN = "access_token"
 CONF_VERIFY_SSL = "verify_ssl"
+CONF_SCAN_INTERVAL_MINUTES = "scan_interval_minutes"
 
 DEFAULT_URL = "https://ghostfol.io"
-DEFAULT_SCAN_INTERVAL = timedelta(minutes=15)
+DEFAULT_SCAN_INTERVAL_MINUTES = 5
+SCAN_INTERVAL_OPTIONS = (5, 15, 60)
+DEFAULT_SCAN_INTERVAL = timedelta(minutes=DEFAULT_SCAN_INTERVAL_MINUTES)
 
 ATTR_ACCOUNT_ID = "account_id"
 ATTR_ACCOUNT_NAME = "account_name"
