@@ -15,7 +15,6 @@ from homeassistant.config_entries import (
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
-    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -40,7 +39,7 @@ def _scan_interval_selector() -> SelectSelector:
     return SelectSelector(
         SelectSelectorConfig(
             options=[
-                SelectOptionDict(value=str(opt), label=f"{opt} minutes")
+                {"value": str(opt), "label": f"{opt} minutes"}
                 for opt in SCAN_INTERVAL_OPTIONS
             ],
             mode=SelectSelectorMode.DROPDOWN,
@@ -48,17 +47,18 @@ def _scan_interval_selector() -> SelectSelector:
     )
 
 
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_URL, default=DEFAULT_URL): str,
-        vol.Required(CONF_ACCESS_TOKEN): str,
-        vol.Optional(CONF_VERIFY_SSL, default=True): bool,
-        vol.Required(
-            CONF_SCAN_INTERVAL_MINUTES,
-            default=str(DEFAULT_SCAN_INTERVAL_MINUTES),
-        ): _scan_interval_selector(),
-    }
-)
+def _user_schema() -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(CONF_URL, default=DEFAULT_URL): str,
+            vol.Required(CONF_ACCESS_TOKEN): str,
+            vol.Optional(CONF_VERIFY_SSL, default=True): bool,
+            vol.Required(
+                CONF_SCAN_INTERVAL_MINUTES,
+                default=str(DEFAULT_SCAN_INTERVAL_MINUTES),
+            ): _scan_interval_selector(),
+        }
+    )
 
 
 class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -111,7 +111,7 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=_user_schema(),
             errors=errors,
         )
 
@@ -125,7 +125,10 @@ class GhostfolioOptionsFlow(OptionsFlow):
     """Allow the user to change the scan interval after setup."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
-        self.config_entry = config_entry
+        # Stored under a private name because in HA 2024.12+ ``config_entry``
+        # is a read-only property on ``OptionsFlow`` and assigning to it
+        # raises an error.
+        self._config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -140,7 +143,7 @@ class GhostfolioOptionsFlow(OptionsFlow):
                 },
             )
 
-        current = self.config_entry.options.get(
+        current = self._config_entry.options.get(
             CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES
         )
         schema = vol.Schema(
