@@ -37,7 +37,11 @@ REQUIRED_MARKERS: dict[str, re.Pattern[str]] = {
     "integration set up": re.compile(
         r"Setup of domain ghostfolio took|Setting up ghostfolio", re.IGNORECASE
     ),
-    "sensor platform forwarded": re.compile(r"Setting up sensor\.ghostfolio"),
+    # Home Assistant logs this as "<platform>.<domain>", i.e.
+    # "Setting up ghostfolio.sensor" — not "sensor.ghostfolio".
+    "sensor platform forwarded": re.compile(
+        r"Setting up ghostfolio\.sensor|Registered new sensor\.ghostfolio entity"
+    ),
     "portfolio data fetched": re.compile(
         r"Finished fetching ghostfolio data.*success: True", re.IGNORECASE
     ),
@@ -59,16 +63,6 @@ def _missing(log: str) -> list[str]:
     ]
 
 
-def _wait_for_markers(path: Path, timeout: int) -> str:
-    """Poll the log until every required marker appears or the timeout passes."""
-    deadline = time.monotonic() + timeout
-    log = _read(path)
-    while _missing(log) and time.monotonic() < deadline:
-        time.sleep(2)
-        log = _read(path)
-    return log
-
-
 def _collect_errors(log: str) -> list[str]:
     """Return the offending lines, including the body of any traceback."""
     errors: list[str] = []
@@ -83,6 +77,21 @@ def _collect_errors(log: str) -> list[str]:
             if line and not line.startswith((" ", "\t")):
                 in_traceback = False
     return errors
+
+
+def _wait_for_markers(path: Path, timeout: int) -> str:
+    """Poll the log until the run resolves, either way, or the timeout passes.
+
+    A logged error is final — there is nothing to wait for once setup or a
+    refresh has failed — so a real failure reports in seconds instead of
+    burning the whole timeout.
+    """
+    deadline = time.monotonic() + timeout
+    log = _read(path)
+    while _missing(log) and not _collect_errors(log) and time.monotonic() < deadline:
+        time.sleep(2)
+        log = _read(path)
+    return log
 
 
 def main() -> int:

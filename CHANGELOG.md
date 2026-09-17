@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - `.pre-commit-config.yaml` (ruff lint + format, JSON/YAML/TOML checks, codespell) and a guard that keeps `manifest.json`'s version in sync with this changelog.
 - Dependabot configuration for GitHub Actions and Python dependencies.
 - A `lint` job and a real `pytest` job in CI, plus a separate `validate` workflow that runs hassfest and HACS validation on every push, pull request and weekly on a schedule.
+- Regression tests for the integration job's log checker, pinned to a real Home Assistant log sample, so a marker that matches nothing fails in seconds during unit tests instead of silently timing out in CI.
 - Home Assistant version coverage: the integration job now runs against the official Home Assistant container and tests `stable` on every push and pull request, plus `beta` and `dev` on a monthly schedule (1st of the month, 06:00 UTC) and on manual dispatch. This mirrors the setup in [`lvlie/heatit_wifi6`](https://github.com/lvlie/heatit_wifi6), which the Dependabot cadence is now also aligned with.
 
 ### Changed
