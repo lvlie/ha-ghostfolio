@@ -1,0 +1,96 @@
+# Tooling configuration for the Ghostfolio custom integration.
+#
+# This project ships a Home Assistant custom component, so it deliberately has
+# no [project] table: nothing here is published to PyPI. The sections below
+# configure ruff, pytest and coverage for local development and CI.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+src = ["custom_components", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "A",     # builtins shadowing
+    "ASYNC", # async pitfalls
+    "B",     # bugbear
+    "C4",    # comprehensions
+    "D",     # pydocstyle (Home Assistant requires docstrings)
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "ICN",   # import conventions
+    "INP",   # implicit namespace packages
+    "ISC",   # implicit string concat
+    "LOG",   # logging
+    "N",     # pep8-naming
+    "PGH",   # pygrep hooks
+    "PIE",   # misc lints
+    "PL",    # pylint
+    "PT",    # pytest style
+    "PTH",   # pathlib
+    "RET",   # return statements
+    "RSE",   # raise statements
+    "RUF",   # ruff specific
+    "SIM",   # simplifications
+    "SLF",   # private member access
+    "T20",   # print statements
+    "TID",   # tidy imports
+    "TRY",   # exception anti-patterns
+    "UP",    # pyupgrade
+    "W",     # pycodestyle warnings
+]
+ignore = [
+    "D202",    # no blank lines after docstring (conflicts with formatter)
+    "D203",    # incompatible with D211
+    "D213",    # incompatible with D212
+    "PLR2004", # magic value comparison is fine for HTTP status codes
+    "TRY003",  # long messages outside exception class are idiomatic here
+    "TRY400",  # logger.exception is not always wanted
+]
+
+[tool.ruff.lint.per-file-ignores]
+# The test stack helpers are standalone CLI scripts run by CI, not library code.
+"scripts/*" = ["INP001", "T201"]
+"tests/stack/*" = ["INP001", "T201"]
+"tests/*" = ["D100", "D103", "PLR2004", "SLF001"]
+# The log sample in this test is copied verbatim from a real Home Assistant
+# run; reflowing those lines would defeat the point of pinning them.
+"tests/test_check_logs.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components", "tests"]
+combine-as-imports = true
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.codespell]
+# "hass" is the Home Assistant core object, not a typo of "hash".
+ignore-words-list = "hass"
+skip = "./.git,./.venv,*.lock"
+
+[tool.pytest.ini_options]
+# The integration lives in custom_components/, so the repo root must be
+# importable from the tests.
+pythonpath = ["."]
+testpaths = ["tests"]
+# tests/stack holds CLI helpers for the docker-compose integration job, not
+# pytest test modules.
+norecursedirs = ["tests/stack"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+source = ["custom_components/ghostfolio"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+show_missing = true

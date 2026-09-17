@@ -1,0 +1,39 @@
+name: validate
+
+# Home Assistant's hassfest rules and the HACS validation rules change
+# independently of this repository, so validation also runs on a schedule to
+# catch breakage that no commit here introduced.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "30 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hassfest:
+    name: Validate with hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # The `brands` check requires the integration to be listed in
+          # home-assistant/brands, which only applies to core integrations.
+          ignore: brands

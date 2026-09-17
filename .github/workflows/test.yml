@@ -1,49 +1,81 @@
 name: test
 
 on:
+  push:
+    branches: [main]
   pull_request:
+  # Monthly compatibility sweep against HA beta / dev to catch upstream
+  # breakage before it lands in stable. 1st of every month at 06:00 UTC.
+  schedule:
+    - cron: "0 6 1 * *"
   workflow_dispatch:
 
-jobs:
-  hassfest:
-    name: Validate with hassfest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: home-assistant/actions/hassfest@master
+permissions:
+  contents: read
 
-  hacs:
-    name: HACS validation
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Keep in sync with the Python version required by the
+  # pytest-homeassistant-custom-component pin in requirements_test.txt.
+  DEFAULT_PYTHON: "3.13"
+
+jobs:
+  lint:
+    name: Lint (pre-commit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hacs/action@main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          category: integration
-          ignore: brands
+          python-version: ${{ env.DEFAULT_PYTHON }}
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: pip install pre-commit
+      - run: pre-commit run --all-files --show-diff-on-failure --color=always
 
   unit:
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: pip install pytest
-      - run: pytest tests/test_coordinator.py -v
+          python-version: ${{ env.DEFAULT_PYTHON }}
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+      - run: pip install -r requirements_test.txt
+      - name: Run pytest against the real Home Assistant test harness
+        run: pytest --cov --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
   integration-test:
-    name: Spin up Ghostfolio + Home Assistant
+    name: HA ${{ matrix.ha_version }} + Ghostfolio
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pushes and pull requests test against `stable` only. Scheduled runs
+        # and manual dispatches also test `beta` and `dev` to surface upcoming
+        # Home Assistant breakage before it reaches users.
+        ha_version: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["stable","beta","dev"]' || '["stable"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ env.DEFAULT_PYTHON }}
 
       - name: Start Ghostfolio (Postgres + Redis + app)
         working-directory: tests/stack
@@ -62,7 +94,6 @@ jobs:
           exit 1
 
       - name: Bootstrap a Ghostfolio user with positions
-        id: bootstrap
         run: |
           python tests/stack/bootstrap_ghostfolio.py \
             --url http://localhost:3333 \
@@ -72,23 +103,6 @@ jobs:
           set +a
           echo "GHOSTFOLIO_TOKEN=${GHOSTFOLIO_TOKEN}" >> "$GITHUB_ENV"
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y --no-install-recommends ffmpeg libturbojpeg0-dev
-
-      - name: Install Home Assistant
-        run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install --upgrade pip
-          # Pin to a recent stable HA core release.
-          #   - josepy<2: acme<3 still references jose.ComparableX509 which
-          #     josepy 2.0 removed.
-          #   - aiodns>=3.2 + pycares>=4.5: aiodns 3.2 calls a Channel
-          #     .getaddrinfo() signature that only exists in pycares 4.5+;
-          #     without both pins HA's startup health-check resolver crashes.
-          pip install "homeassistant==2024.10.4" "josepy<2.0"
-          pip install --upgrade "aiodns>=3.2.0" "pycares>=4.5.0"
-
       - name: Stage Home Assistant config with the integration loaded
         run: |
           python tests/stack/setup_ha_config.py \
@@ -96,24 +110,37 @@ jobs:
             --url http://localhost:3333 \
             --token "${GHOSTFOLIO_TOKEN}"
 
-      - name: Start Home Assistant and capture logs
+      - name: Start Home Assistant ${{ matrix.ha_version }}
         run: |
-          . .venv/bin/activate
-          mkdir -p ha_config
-          # Run HA in the background and stop it once we've seen "Started" or hit the timeout.
-          python tests/stack/run_ha.py --config-dir ha_config --timeout 240 \
-            | tee ha.log
+          # Host networking so the container reaches the Ghostfolio stack on
+          # localhost:3333, the same URL the staged config entry uses.
+          docker run -d \
+            --name homeassistant \
+            --network host \
+            -v "$(pwd)/ha_config:/config" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha_version }}
 
-      - name: Verify the integration loaded without errors
-        run: |
-          python tests/stack/check_logs.py ha.log
+      - name: Verify the integration loaded, set up and fetched data
+        run: python tests/stack/check_logs.py ha_config/home-assistant.log --wait 300
 
-      - name: Dump Ghostfolio logs on failure
+      - name: Dump logs on failure
         if: failure()
-        working-directory: tests/stack
-        run: docker compose logs --no-color | tail -n 400
+        run: |
+          echo "----- docker logs homeassistant -----"
+          docker logs homeassistant 2>&1 | tail -n 200 || true
+          echo "----- ghostfolio -----"
+          docker compose -f tests/stack/docker-compose.yml logs --no-color | tail -n 200
 
-      - name: Tear down Ghostfolio
+      - name: Upload Home Assistant log
+        uses: actions/upload-artifact@v7
         if: always()
-        working-directory: tests/stack
-        run: docker compose down -v
+        with:
+          name: home-assistant-log-${{ matrix.ha_version }}
+          path: ha_config/home-assistant.log
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker rm -f homeassistant || true
+          docker compose -f tests/stack/docker-compose.yml down -v

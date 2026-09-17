@@ -10,6 +10,13 @@
           "verify_ssl": "Verify SSL certificate",
           "scan_interval_minutes": "Update interval"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Ghostfolio",
+        "description": "The access token for {url} is no longer accepted. Enter a new security token from My Ghostfolio → Account → Security token.",
+        "data": {
+          "access_token": "Access token"
+        }
       }
     },
     "error": {
@@ -18,7 +25,8 @@
       "unknown": "Unexpected error"
     },
     "abort": {
-      "already_configured": "This Ghostfolio instance is already configured."
+      "already_configured": "This Ghostfolio instance is already configured.",
+      "reauth_successful": "Ghostfolio was successfully reauthenticated."
     }
   },
   "options": {

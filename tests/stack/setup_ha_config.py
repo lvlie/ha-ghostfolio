@@ -8,14 +8,15 @@ Writes:
 Usage:
     python setup_ha_config.py --config-dir ha_config --url URL --token TOKEN
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import shutil
 import sys
 import uuid
-from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INTEGRATION_SRC = REPO_ROOT / "custom_components" / "ghostfolio"
