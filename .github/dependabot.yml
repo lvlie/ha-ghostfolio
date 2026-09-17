@@ -1,13 +1,16 @@
+# Cadence and shape kept in sync with lvlie/heatit_wifi6 so both Home
+# Assistant integrations are maintained the same way.
 version: 2
 
 updates:
-  # Keep the workflow actions current; a single grouped PR per week.
+  # Keep the workflow actions current; a single grouped PR per month.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "06:00"
+      timezone: Europe/Amsterdam
     open-pull-requests-limit: 5
     labels:
       - dependencies
@@ -15,19 +18,21 @@ updates:
     commit-message:
       prefix: ci
     groups:
-      github-actions:
+      actions:
         patterns:
           - "*"
 
   # pytest-homeassistant-custom-component pins the Home Assistant version the
-  # tests run against, so these PRs are how this integration finds out about
-  # breaking core changes early.
+  # unit tests run against, so these PRs move the tested core version forward.
+  # Compatibility with upcoming releases is covered separately by the monthly
+  # stable/beta/dev sweep in test.yml.
   - package-ecosystem: pip
     directory: "/"
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "06:00"
+      timezone: Europe/Amsterdam
     open-pull-requests-limit: 5
     labels:
       - dependencies

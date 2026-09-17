@@ -78,7 +78,43 @@ integration finds out about breaking core changes.
 | `validate.yml` | `hacs` | HACS repository validation |
 | `test.yml` | `lint` | Runs every pre-commit hook |
 | `test.yml` | `unit` | `pytest` with coverage, using `pytest-homeassistant-custom-component` |
-| `test.yml` | `integration-test` | Boots Postgres + Redis + Ghostfolio in Docker, creates a user with positions over the API, then starts a real Home Assistant with this integration pointed at it and fails if the log contains errors |
+| `test.yml` | `integration-test` | Boots Postgres + Redis + Ghostfolio in Docker, creates a user with positions over the API, then starts the official Home Assistant container with this integration pointed at it and asserts the log shows the integration set up, its sensors created and portfolio data fetched |
 
 `validate.yml` also runs weekly on a schedule, because hassfest and HACS rules
 change independently of this repository.
+
+### Home Assistant version coverage
+
+The integration job runs against the official
+`ghcr.io/home-assistant/home-assistant` container, so the Home Assistant
+version is just a tag:
+
+| Trigger | Versions tested |
+| --- | --- |
+| Push to `main`, pull request | `stable` |
+| Monthly schedule (1st, 06:00 UTC), manual dispatch | `stable`, `beta`, `dev` |
+
+The monthly sweep is what surfaces upcoming core breakage — a change that only
+lands in `dev` today shows up as a red `beta`/`dev` job long before it reaches
+users. The matrix does not fail fast, so one broken version still reports the
+others.
+
+To reproduce a run locally:
+
+```bash
+cd tests/stack && docker compose up -d && cd -
+python tests/stack/bootstrap_ghostfolio.py --url http://localhost:3333 --output ghostfolio.env
+. ./ghostfolio.env
+python tests/stack/setup_ha_config.py --config-dir ha_config \
+  --url http://localhost:3333 --token "$GHOSTFOLIO_TOKEN"
+docker run -d --name homeassistant --network host \
+  -v "$(pwd)/ha_config:/config" ghcr.io/home-assistant/home-assistant:stable
+python tests/stack/check_logs.py ha_config/home-assistant.log --wait 300
+```
+
+## Related
+
+[`lvlie/heatit_wifi6`](https://github.com/lvlie/heatit_wifi6) is maintained
+alongside this repository and shares its CI shape: the same container-based
+Home Assistant integration test, the same `stable`/`beta`/`dev` matrix on the
+same monthly schedule, and the same Dependabot cadence.

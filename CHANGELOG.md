@@ -10,12 +10,14 @@ All notable changes to this project will be documented in this file.
 - `.pre-commit-config.yaml` (ruff lint + format, JSON/YAML/TOML checks, codespell) and a guard that keeps `manifest.json`'s version in sync with this changelog.
 - Dependabot configuration for GitHub Actions and Python dependencies.
 - A `lint` job and a real `pytest` job in CI, plus a separate `validate` workflow that runs hassfest and HACS validation on every push, pull request and weekly on a schedule.
+- Home Assistant version coverage: the integration job now runs against the official Home Assistant container and tests `stable` on every push and pull request, plus `beta` and `dev` on a monthly schedule (1st of the month, 06:00 UTC) and on manual dispatch. This mirrors the setup in [`lvlie/heatit_wifi6`](https://github.com/lvlie/heatit_wifi6), which the Dependabot cadence is now also aligned with.
 
 ### Changed
 - The integration now stores its coordinator in `ConfigEntry.runtime_data` and passes the config entry to the `DataUpdateCoordinator`, following current Home Assistant practice. This raises the minimum supported Home Assistant version to **2025.2.0**.
 - Sensors declare `PARALLEL_UPDATES = 0` (all data comes from one coordinator refresh) and a suggested display precision of 2 decimals.
 - The API client now translates aiohttp connection errors and timeouts into `GhostfolioApiError`, and treats `HTTP 403` on a data call as an authentication failure. Expired JWTs are still refreshed once per request.
-- CI installs Home Assistant from the same pin used by the unit tests, so the docker-compose integration test and the unit tests always run against the same core version.
+- The integration test runs Home Assistant from its official container image instead of a pip install, which removes the `ffmpeg`/`libturbojpeg` and `josepy`/`aiodns` workarounds needed to install an old core release, and makes the tested core version a single tag.
+- `tests/stack/check_logs.py` now waits for the integration to finish loading and requires positive evidence that it was set up, that its sensor platform was forwarded, and that the coordinator fetched portfolio data successfully — not just the absence of errors. `tests/stack/run_ha.py` is gone; the container supersedes it.
 
 ### Fixed
 - An authentication failure during a scheduled update raised `UpdateFailed` and retried forever; it now raises `ConfigEntryAuthFailed`, which starts the reauth flow.

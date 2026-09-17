@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Monthly compatibility sweep against HA beta / dev to catch upstream
+  # breakage before it lands in stable. 1st of every month at 06:00 UTC.
+  schedule:
+    - cron: "0 6 1 * *"
   workflow_dispatch:
 
 permissions:
@@ -55,9 +59,16 @@ jobs:
           if-no-files-found: ignore
 
   integration-test:
-    name: Spin up Ghostfolio + Home Assistant
+    name: HA ${{ matrix.ha_version }} + Ghostfolio
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pushes and pull requests test against `stable` only. Scheduled runs
+        # and manual dispatches also test `beta` and `dev` to surface upcoming
+        # Home Assistant breakage before it reaches users.
+        ha_version: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["stable","beta","dev"]' || '["stable"]') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -65,8 +76,6 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
-          cache: pip
-          cache-dependency-path: requirements_test.txt
 
       - name: Start Ghostfolio (Postgres + Redis + app)
         working-directory: tests/stack
@@ -85,7 +94,6 @@ jobs:
           exit 1
 
       - name: Bootstrap a Ghostfolio user with positions
-        id: bootstrap
         run: |
           python tests/stack/bootstrap_ghostfolio.py \
             --url http://localhost:3333 \
@@ -95,19 +103,6 @@ jobs:
           set +a
           echo "GHOSTFOLIO_TOKEN=${GHOSTFOLIO_TOKEN}" >> "$GITHUB_ENV"
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y --no-install-recommends ffmpeg libturbojpeg0-dev
-
-      - name: Install Home Assistant
-        run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install --upgrade pip
-          # requirements_test.txt pins pytest-homeassistant-custom-component,
-          # which in turn pins the exact Home Assistant release. Installing it
-          # here keeps this job on the same core version as the unit tests.
-          pip install -r requirements_test.txt
-
       - name: Stage Home Assistant config with the integration loaded
         run: |
           python tests/stack/setup_ha_config.py \
@@ -115,32 +110,37 @@ jobs:
             --url http://localhost:3333 \
             --token "${GHOSTFOLIO_TOKEN}"
 
-      - name: Start Home Assistant and capture logs
+      - name: Start Home Assistant ${{ matrix.ha_version }}
         run: |
-          . .venv/bin/activate
-          mkdir -p ha_config
-          # Run HA in the background and stop it once we've seen "Started" or hit the timeout.
-          python tests/stack/run_ha.py --config-dir ha_config --timeout 240 \
-            | tee ha.log
+          # Host networking so the container reaches the Ghostfolio stack on
+          # localhost:3333, the same URL the staged config entry uses.
+          docker run -d \
+            --name homeassistant \
+            --network host \
+            -v "$(pwd)/ha_config:/config" \
+            ghcr.io/home-assistant/home-assistant:${{ matrix.ha_version }}
 
-      - name: Verify the integration loaded without errors
+      - name: Verify the integration loaded, set up and fetched data
+        run: python tests/stack/check_logs.py ha_config/home-assistant.log --wait 300
+
+      - name: Dump logs on failure
+        if: failure()
         run: |
-          python tests/stack/check_logs.py ha.log
+          echo "----- docker logs homeassistant -----"
+          docker logs homeassistant 2>&1 | tail -n 200 || true
+          echo "----- ghostfolio -----"
+          docker compose -f tests/stack/docker-compose.yml logs --no-color | tail -n 200
 
       - name: Upload Home Assistant log
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: home-assistant-log
-          path: ha.log
+          name: home-assistant-log-${{ matrix.ha_version }}
+          path: ha_config/home-assistant.log
           if-no-files-found: ignore
 
-      - name: Dump Ghostfolio logs on failure
-        if: failure()
-        working-directory: tests/stack
-        run: docker compose logs --no-color | tail -n 400
-
-      - name: Tear down Ghostfolio
+      - name: Tear down
         if: always()
-        working-directory: tests/stack
-        run: docker compose down -v
+        run: |
+          docker rm -f homeassistant || true
+          docker compose -f tests/stack/docker-compose.yml down -v
