@@ -54,6 +54,9 @@ ignore = [
 "scripts/*" = ["INP001", "T201"]
 "tests/stack/*" = ["INP001", "T201"]
 "tests/*" = ["D100", "D103", "PLR2004", "SLF001"]
+# The log sample in this test is copied verbatim from a real Home Assistant
+# run; reflowing those lines would defeat the point of pinning them.
+"tests/test_check_logs.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
