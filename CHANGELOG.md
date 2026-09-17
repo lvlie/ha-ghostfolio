@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-09-17
+
+### Added
+- Reauthentication flow: when Ghostfolio rejects the stored security token, Home Assistant now prompts for a new one instead of leaving the integration in a permanently failing state.
+- Unit tests that run against the real Home Assistant test harness (`pytest-homeassistant-custom-component`), covering the config, reauth and options flows, entry setup/unload, the API client and the sensor platform.
+- `.pre-commit-config.yaml` (ruff lint + format, JSON/YAML/TOML checks, codespell) and a guard that keeps `manifest.json`'s version in sync with this changelog.
+- Dependabot configuration for GitHub Actions and Python dependencies.
+- A `lint` job and a real `pytest` job in CI, plus a separate `validate` workflow that runs hassfest and HACS validation on every push, pull request and weekly on a schedule.
+
+### Changed
+- The integration now stores its coordinator in `ConfigEntry.runtime_data` and passes the config entry to the `DataUpdateCoordinator`, following current Home Assistant practice. This raises the minimum supported Home Assistant version to **2025.2.0**.
+- Sensors declare `PARALLEL_UPDATES = 0` (all data comes from one coordinator refresh) and a suggested display precision of 2 decimals.
+- The API client now translates aiohttp connection errors and timeouts into `GhostfolioApiError`, and treats `HTTP 403` on a data call as an authentication failure. Expired JWTs are still refreshed once per request.
+- CI installs Home Assistant from the same pin used by the unit tests, so the docker-compose integration test and the unit tests always run against the same core version.
+
+### Fixed
+- An authentication failure during a scheduled update raised `UpdateFailed` and retried forever; it now raises `ConfigEntryAuthFailed`, which starts the reauth flow.
+
 ## [0.1.1] - 2026-05-06
 
 ### Fixed

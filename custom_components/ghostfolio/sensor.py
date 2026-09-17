@@ -1,4 +1,5 @@
 """Sensors for the Ghostfolio integration."""
+
 from __future__ import annotations
 
 import logging
@@ -9,10 +10,9 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -27,12 +27,17 @@ from .const import (
     ATTR_SYMBOL,
     DOMAIN,
 )
-from .coordinator import GhostfolioCoordinator
+from .coordinator import GhostfolioConfigEntry, GhostfolioCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# All data comes from a single coordinator refresh, so the entities never
+# poll Ghostfolio themselves.
+PARALLEL_UPDATES = 0
+
 
 def _position_key(position: dict[str, Any]) -> str:
+    """Return a stable identifier for an (account, symbol) position."""
     account = position.get("account_id") or "portfolio"
     symbol = position.get("symbol") or position.get("name") or "unknown"
     return f"{account}::{symbol}"
@@ -51,11 +56,11 @@ def _has_nonzero_value(position: dict[str, Any]) -> bool:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: GhostfolioConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up Ghostfolio sensors based on the coordinator data."""
-    coordinator: GhostfolioCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     known: set[str] = set()
 
@@ -94,8 +99,10 @@ class _GhostfolioBaseEntity(CoordinatorEntity[GhostfolioCoordinator], SensorEnti
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.TOTAL
     _attr_device_class = SensorDeviceClass.MONETARY
+    _attr_suggested_display_precision = 2
 
     def __init__(self, coordinator: GhostfolioCoordinator, entry_id: str) -> None:
+        """Attach the entity to the Ghostfolio service device."""
         super().__init__(coordinator)
         self._entry_id = entry_id
         self._attr_device_info = DeviceInfo(
@@ -114,17 +121,20 @@ class GhostfolioTotalValueSensor(_GhostfolioBaseEntity):
     _attr_icon = "mdi:cash-multiple"
 
     def __init__(self, coordinator: GhostfolioCoordinator, entry_id: str) -> None:
+        """Initialise the total portfolio value sensor."""
         super().__init__(coordinator, entry_id)
         self._attr_unique_id = f"{entry_id}_total_value"
 
     @property
     def native_value(self) -> float | None:
+        """Return the total portfolio value."""
         data = self.coordinator.data or {}
         value = data.get("total_value")
         return round(float(value), 2) if value is not None else None
 
     @property
     def native_unit_of_measurement(self) -> str | None:
+        """Return the portfolio base currency."""
         data = self.coordinator.data or {}
         return data.get("currency")
 
@@ -140,6 +150,7 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
         entry_id: str,
         position_key: str,
     ) -> None:
+        """Initialise a sensor for one (account, symbol) position."""
         super().__init__(coordinator, entry_id)
         self._position_key = position_key
         self._attr_unique_id = f"{entry_id}_{position_key}"
@@ -149,6 +160,7 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
         self._attr_name = f"{account_name} {symbol}"
 
     def _find_position(self) -> dict[str, Any] | None:
+        """Return the current data for this position, if it still exists."""
         data = self.coordinator.data or {}
         for pos in data.get("positions", []):
             if _position_key(pos) == self._position_key:
@@ -157,10 +169,12 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
 
     @property
     def available(self) -> bool:
+        """Return True while the position is still reported by Ghostfolio."""
         return super().available and self._find_position() is not None
 
     @property
     def native_value(self) -> float | None:
+        """Return the market value of the position."""
         position = self._find_position()
         if not position:
             return None
@@ -169,6 +183,7 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
 
     @property
     def native_unit_of_measurement(self) -> str | None:
+        """Return the currency the position is valued in."""
         position = self._find_position()
         if position and position.get("currency"):
             return position["currency"]
@@ -177,6 +192,7 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the position details as entity attributes."""
         position = self._find_position() or {}
         return {
             ATTR_ACCOUNT_ID: position.get("account_id"),

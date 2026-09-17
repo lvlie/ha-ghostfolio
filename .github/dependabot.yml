@@ -1,0 +1,36 @@
+version: 2
+
+updates:
+  # Keep the workflow actions current; a single grouped PR per week.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # pytest-homeassistant-custom-component pins the Home Assistant version the
+  # tests run against, so these PRs are how this integration finds out about
+  # breaking core changes early.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: build

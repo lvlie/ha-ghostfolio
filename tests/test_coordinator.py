@@ -1,109 +1,77 @@
-"""Unit tests for the coordinator's response normalisation."""
+"""Tests for the coordinator's refresh behaviour and response normalisation."""
+
 from __future__ import annotations
 
-import importlib.util
-import sys
-import types
-from pathlib import Path
+from datetime import timedelta
+from unittest.mock import AsyncMock
 
-REPO = Path(__file__).resolve().parents[1]
+from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
-
-def _stub_aiohttp() -> None:
-    if "aiohttp" in sys.modules:
-        return
-    aiohttp = types.ModuleType("aiohttp")
-
-    class _ClientResponseError(Exception):
-        pass
-
-    class _ClientSession:
-        pass
-
-    class _ClientTimeout:
-        def __init__(self, *args, **kwargs):
-            pass
-
-    aiohttp.ClientResponseError = _ClientResponseError
-    aiohttp.ClientSession = _ClientSession
-    aiohttp.ClientTimeout = _ClientTimeout
-    sys.modules["aiohttp"] = aiohttp
+from custom_components.ghostfolio.api import GhostfolioApiError, GhostfolioAuthError
+from custom_components.ghostfolio.coordinator import _normalise
 
 
-def _stub_homeassistant() -> None:
-    if "homeassistant" in sys.modules:
-        return
-    ha = types.ModuleType("homeassistant")
-    helpers = types.ModuleType("homeassistant.helpers")
-    update_coordinator = types.ModuleType("homeassistant.helpers.update_coordinator")
-    core = types.ModuleType("homeassistant.core")
+async def test_api_error_marks_update_failed(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """A transient API error is reported without dropping the entities."""
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
 
-    class _DataUpdateCoordinator:
-        def __init__(self, *args, **kwargs):
-            pass
+    coordinator = mock_config_entry.runtime_data
+    mock_client["details"].side_effect = GhostfolioApiError("boom")
 
-        def __class_getitem__(cls, item):
-            return cls
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=6))
+    await hass.async_block_till_done()
 
-    class _UpdateFailed(Exception):
-        pass
-
-    update_coordinator.DataUpdateCoordinator = _DataUpdateCoordinator
-    update_coordinator.UpdateFailed = _UpdateFailed
-    core.HomeAssistant = object
-
-    sys.modules["homeassistant"] = ha
-    sys.modules["homeassistant.helpers"] = helpers
-    sys.modules["homeassistant.helpers.update_coordinator"] = update_coordinator
-    sys.modules["homeassistant.core"] = core
-
-
-def _load_coordinator():
-    _stub_aiohttp()
-    _stub_homeassistant()
-    # Load the file directly so we don't trigger custom_components/ghostfolio/__init__.py.
-    spec = importlib.util.spec_from_file_location(
-        "_gf_coordinator",
-        REPO / "custom_components" / "ghostfolio" / "coordinator.py",
-        submodule_search_locations=[],
+    assert coordinator.last_update_success is False
+    assert hass.states.get("sensor.ghostfolio_total_portfolio_value").state == (
+        "unavailable"
     )
-    module = importlib.util.module_from_spec(spec)
-    # The coordinator imports `.api` and `.const` relatively; satisfy those by
-    # loading them as a stand-alone package first.
-    pkg = types.ModuleType("_gf_pkg")
-    pkg.__path__ = [str(REPO / "custom_components" / "ghostfolio")]
-    sys.modules["_gf_pkg"] = pkg
-
-    for sub in ("const", "api"):
-        sub_spec = importlib.util.spec_from_file_location(
-            f"_gf_pkg.{sub}",
-            REPO / "custom_components" / "ghostfolio" / f"{sub}.py",
-        )
-        sub_mod = importlib.util.module_from_spec(sub_spec)
-        sys.modules[f"_gf_pkg.{sub}"] = sub_mod
-        sub_spec.loader.exec_module(sub_mod)
-
-    # Rewrite the relative imports by loading coordinator.py source and
-    # exec'ing it inside the fake package.
-    coord_spec = importlib.util.spec_from_file_location(
-        "_gf_pkg.coordinator",
-        REPO / "custom_components" / "ghostfolio" / "coordinator.py",
-    )
-    coord_mod = importlib.util.module_from_spec(coord_spec)
-    sys.modules["_gf_pkg.coordinator"] = coord_mod
-    coord_spec.loader.exec_module(coord_mod)
-    return coord_mod
 
 
-_normalise = _load_coordinator()._normalise
+async def test_revoked_token_triggers_reauth(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """An auth failure during a refresh asks the user for a new token."""
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    mock_client["user"].side_effect = GhostfolioAuthError("revoked")
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=6))
+    await hass.async_block_till_done()
+
+    flows = hass.config_entries.flow.async_progress_by_handler("ghostfolio")
+    assert [flow["context"]["source"] for flow in flows] == ["reauth"]
 
 
-def test_normalise_with_per_account_holdings():
+def test_normalise_with_per_account_holdings() -> None:
+    """Holdings split over accounts become one position per account."""
     raw = {
         "summary": {"baseCurrency": "USD", "currentValueInBaseCurrency": 1500.0},
         "accounts": {
-            "acc-1": {"name": "Brokerage", "currency": "USD", "valueInBaseCurrency": 1000},
-            "acc-2": {"name": "Crypto", "currency": "USD", "valueInBaseCurrency": 500},
+            "acc-1": {
+                "name": "Brokerage",
+                "currency": "USD",
+                "valueInBaseCurrency": 1000,
+            },
+            "acc-2": {
+                "name": "Crypto",
+                "currency": "USD",
+                "valueInBaseCurrency": 500,
+            },
         },
         "holdings": {
             "AAPL": {
@@ -115,7 +83,12 @@ def test_normalise_with_per_account_holdings():
                 "dataSource": "YAHOO",
                 "assetClass": "EQUITY",
                 "accounts": [
-                    {"id": "acc-1", "name": "Brokerage", "valueInBaseCurrency": 1000, "quantity": 5},
+                    {
+                        "id": "acc-1",
+                        "name": "Brokerage",
+                        "valueInBaseCurrency": 1000,
+                        "quantity": 5,
+                    },
                 ],
             },
             "BTC": {
@@ -127,7 +100,12 @@ def test_normalise_with_per_account_holdings():
                 "dataSource": "COINGECKO",
                 "assetClass": "CRYPTO",
                 "accounts": [
-                    {"id": "acc-2", "name": "Crypto", "valueInBaseCurrency": 500, "quantity": 0.01},
+                    {
+                        "id": "acc-2",
+                        "name": "Crypto",
+                        "valueInBaseCurrency": 500,
+                        "quantity": 0.01,
+                    },
                 ],
             },
         },
@@ -146,7 +124,30 @@ def test_normalise_with_per_account_holdings():
     assert aapl["value"] == 1000
 
 
-def test_normalise_uses_user_base_currency_when_summary_missing_it():
+def test_normalise_accepts_list_shaped_payloads() -> None:
+    """Ghostfolio has shipped both list- and dict-shaped collections."""
+    raw = {
+        "summary": {"baseCurrency": "USD", "currentValueInBaseCurrency": 1000.0},
+        "accounts": [{"id": "acc-1", "name": "Brokerage", "value": 1000}],
+        "holdings": [
+            {
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
+                "quantity": 5,
+                "marketPrice": 200,
+                "accounts": [{"id": "acc-1", "name": "Brokerage", "value": 1000}],
+            }
+        ],
+    }
+
+    result = _normalise(raw)
+
+    assert set(result["accounts"]) == {"acc-1"}
+    assert result["positions"][0]["account_id"] == "acc-1"
+
+
+def test_normalise_uses_user_base_currency_when_summary_missing_it() -> None:
+    """The user's base currency wins over the USD fallback."""
     raw = {
         "summary": {"currentValueInBaseCurrency": 1000.0},
         "accounts": {},
@@ -158,7 +159,8 @@ def test_normalise_uses_user_base_currency_when_summary_missing_it():
     assert result["total_value"] == 1000.0
 
 
-def test_normalise_user_currency_overrides_summary_default():
+def test_normalise_user_currency_overrides_summary_default() -> None:
+    """The user's base currency also wins over the summary currency."""
     raw = {
         "summary": {"baseCurrency": "USD", "currentValueInBaseCurrency": 1000.0},
         "accounts": {},
@@ -169,7 +171,8 @@ def test_normalise_user_currency_overrides_summary_default():
     assert result["currency"] == "EUR"
 
 
-def test_normalise_falls_back_to_quantity_times_price():
+def test_normalise_falls_back_to_quantity_times_price() -> None:
+    """A holding without accounts is reported as a single portfolio position."""
     raw = {
         "summary": {},
         "accounts": {},
@@ -188,3 +191,16 @@ def test_normalise_falls_back_to_quantity_times_price():
     pos = result["positions"][0]
     assert pos["account_id"] is None
     assert pos["value"] == 800
+
+
+def test_normalise_totals_accounts_when_summary_has_no_value() -> None:
+    """Without a summary value the account values are summed."""
+    raw = {
+        "summary": {},
+        "accounts": {
+            "acc-1": {"name": "Brokerage", "valueInBaseCurrency": 700},
+            "acc-2": {"name": "Crypto", "valueInBaseCurrency": 300},
+        },
+        "holdings": {},
+    }
+    assert _normalise(raw)["total_value"] == 1000

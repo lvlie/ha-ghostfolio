@@ -45,14 +45,40 @@ the UI.
 | Verify SSL | Disable for self-signed certificates |
 | Update interval | How often to poll Ghostfolio: 5, 15, or 60 minutes |
 
-## Development & CI
+## Requirements
 
-A GitHub Actions workflow (`.github/workflows/test.yml`) spins up a real
-Ghostfolio instance (Postgres + Redis + Ghostfolio) inside the runner, creates
-a user via the API, then boots Home Assistant with this integration loaded
-against that instance. The job fails if any errors are written to the
-Home Assistant log.
+- Home Assistant **2025.2.0** or newer.
+- A Ghostfolio instance reachable from Home Assistant.
 
-The same workflow can also point at `https://ghostfol.io` for smoke tests, but
-because the public demo doesn't expose API tokens, the local docker-compose
-path is the source of truth.
+If Ghostfolio stops accepting the stored token, Home Assistant raises a repair
+notification and the integration asks for a new one through its
+reauthentication flow — the entry does not need to be removed and re-added.
+
+## Development
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements_test.txt
+pip install pre-commit && pre-commit install
+
+pytest                       # unit tests against the Home Assistant test harness
+pre-commit run --all-files   # ruff lint + format, JSON/YAML checks, codespell
+```
+
+`requirements_test.txt` pins `pytest-homeassistant-custom-component`, which in
+turn pins the exact Home Assistant version everything is tested against.
+Dependabot raises a PR when a newer one is available, which is how this
+integration finds out about breaking core changes.
+
+## CI
+
+| Workflow | Job | What it does |
+| --- | --- | --- |
+| `validate.yml` | `hassfest` | Home Assistant's own integration manifest/strings validation |
+| `validate.yml` | `hacs` | HACS repository validation |
+| `test.yml` | `lint` | Runs every pre-commit hook |
+| `test.yml` | `unit` | `pytest` with coverage, using `pytest-homeassistant-custom-component` |
+| `test.yml` | `integration-test` | Boots Postgres + Redis + Ghostfolio in Docker, creates a user with positions over the API, then starts a real Home Assistant with this integration pointed at it and fails if the log contains errors |
+
+`validate.yml` also runs weekly on a schedule, because hassfest and HACS rules
+change independently of this repository.

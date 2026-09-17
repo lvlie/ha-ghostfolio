@@ -1,0 +1,43 @@
+# Run `pre-commit install` once to enable these checks on every commit,
+# or `pre-commit run --all-files` to check the whole tree.
+ci:
+  autoupdate_schedule: monthly
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        additional_dependencies:
+          - tomli
+        exclude: ^(CHANGELOG\.md)$
+
+  - repo: local
+    hooks:
+      - id: manifest-version-matches-changelog
+        name: manifest version is documented in CHANGELOG.md
+        entry: python scripts/check_version.py
+        language: python
+        pass_filenames: false
+        files: ^(custom_components/ghostfolio/manifest\.json|CHANGELOG\.md)$

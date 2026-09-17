@@ -1,10 +1,10 @@
 """The Ghostfolio integration."""
+
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
+import logging
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -17,16 +17,15 @@ from .const import (
     CONF_URL,
     CONF_VERIFY_SSL,
     DEFAULT_SCAN_INTERVAL_MINUTES,
-    DOMAIN,
 )
-from .coordinator import GhostfolioCoordinator
+from .coordinator import GhostfolioConfigEntry, GhostfolioCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: GhostfolioConfigEntry) -> bool:
     """Set up Ghostfolio from a config entry."""
     session = async_get_clientsession(hass)
     client = GhostfolioClient(
@@ -44,29 +43,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady(str(err)) from err
 
     interval = timedelta(minutes=_resolve_scan_interval(entry))
-    coordinator = GhostfolioCoordinator(hass, client, update_interval=interval)
+    coordinator = GhostfolioCoordinator(hass, entry, client, update_interval=interval)
     await coordinator.async_config_entry_first_refresh()
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    entry.runtime_data = coordinator
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: GhostfolioConfigEntry) -> bool:
     """Unload a Ghostfolio config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id, None)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def _async_update_listener(
+    hass: HomeAssistant, entry: GhostfolioConfigEntry
+) -> None:
     """Reload the entry when options (e.g. scan interval) change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _resolve_scan_interval(entry: ConfigEntry) -> int:
+def _resolve_scan_interval(entry: GhostfolioConfigEntry) -> int:
+    """Return the configured poll interval in minutes, falling back to the default."""
     raw = entry.options.get(
         CONF_SCAN_INTERVAL_MINUTES,
         entry.data.get(CONF_SCAN_INTERVAL_MINUTES, DEFAULT_SCAN_INTERVAL_MINUTES),

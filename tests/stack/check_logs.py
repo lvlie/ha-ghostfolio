@@ -1,9 +1,10 @@
 """Scan a captured Home Assistant log for errors related to this integration."""
+
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import sys
-from pathlib import Path
 
 # Lines we consider fatal. Treat anything at ERROR/CRITICAL referencing
 # ghostfolio (or that comes from a generic HA component while ghostfolio is

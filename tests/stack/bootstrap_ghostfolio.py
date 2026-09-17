@@ -6,15 +6,17 @@ realistic to read.
 Usage:
     python bootstrap_ghostfolio.py --url http://localhost:3333 --output env
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import sys
 import time
+from typing import Any
 import urllib.error
 import urllib.request
-from typing import Any
 
 
 def _request(
@@ -37,12 +39,13 @@ def _request(
 
 def wait_for_health(url: str, retries: int = 60) -> None:
     health = f"{url.rstrip('/')}/api/v1/health"
-    for attempt in range(retries):
+    for _attempt in range(retries):
         try:
             urllib.request.urlopen(health, timeout=5).read()
-            return
         except (urllib.error.URLError, urllib.error.HTTPError):
             time.sleep(2)
+        else:
+            return
     raise SystemExit(f"Ghostfolio at {health} did not become healthy")
 
 
@@ -123,7 +126,10 @@ def main() -> int:
             print(f"Created account {name}: {acc.get('id')}")
         except urllib.error.HTTPError as err:
             body = err.read().decode("utf-8", errors="ignore")
-            print(f"WARN: account creation failed ({err.code}): {body}", file=sys.stderr)
+            print(
+                f"WARN: account creation failed ({err.code}): {body}",
+                file=sys.stderr,
+            )
 
     if created_accounts:
         first = created_accounts[0]
@@ -142,8 +148,7 @@ def main() -> int:
         ]
         import_activities(args.url, jwt, activities)
 
-    with open(args.output, "w", encoding="utf-8") as fh:
-        fh.write(f"GHOSTFOLIO_TOKEN={access_token}\n")
+    Path(args.output).write_text(f"GHOSTFOLIO_TOKEN={access_token}\n", encoding="utf-8")
     print(f"Wrote credentials to {args.output}")
     return 0
 

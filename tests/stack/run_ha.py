@@ -2,10 +2,12 @@
 
 Exits 0 once HA has logged that it has finished startup, or after the timeout.
 """
+
 from __future__ import annotations
 
 import argparse
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -44,18 +46,18 @@ def main() -> int:
 
     start = time.monotonic()
     saw_done = False
-    saw_started = False
+    # Set once startup is seen; logs keep streaming until this deadline passes.
+    deadline: float | None = None
 
     try:
-        import select
-        assert proc.stdout is not None
         while True:
-            if saw_started and time.monotonic() > deadline:
+            if deadline is not None and time.monotonic() > deadline:
                 break
 
             if time.monotonic() - start > args.timeout:
                 print(
-                    f"::error::Home Assistant did not finish startup within {args.timeout}s",
+                    "::error::Home Assistant did not finish startup within "
+                    f"{args.timeout}s",
                     file=sys.stderr,
                 )
                 break
@@ -70,13 +72,16 @@ def main() -> int:
                 sys.stdout.write(line)
                 sys.stdout.flush()
 
-                if DONE_MARKER in line or ALT_READY_MARKER in line or READY_MARKER in line:
+                if (
+                    DONE_MARKER in line
+                    or ALT_READY_MARKER in line
+                    or READY_MARKER in line
+                ):
                     saw_done = True
 
                 # Once we see the "started" line, keep collecting logs for a few
                 # seconds so we capture the coordinator's first refresh, then stop.
-                if saw_done and not saw_started:
-                    saw_started = True
+                if saw_done and deadline is None:
                     deadline = time.monotonic() + 20
     finally:
         if proc.poll() is None:
