@@ -20,7 +20,8 @@ concurrency:
 env:
   # Keep in sync with the Python version required by the
   # pytest-homeassistant-custom-component pin in requirements_test.txt.
-  DEFAULT_PYTHON: "3.13"
+  # 0.13.365 (Home Assistant 2026.9.2) requires Python 3.14 or newer.
+  DEFAULT_PYTHON: "3.14"
 
 jobs:
   lint:
