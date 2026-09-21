@@ -3,6 +3,6 @@
 # pytest-homeassistant-custom-component pins the exact Home Assistant version
 # it was built against, so this single pin drives both the unit tests and the
 # docker-compose integration job. Dependabot keeps it current; when it bumps to
-# a release that needs a newer Python, bump `python-version` in
+# a release that needs a newer Python, bump `DEFAULT_PYTHON` in
 # .github/workflows/test.yml to match.
 pytest-homeassistant-custom-component==0.13.365
