@@ -65,6 +65,16 @@ def _user_schema() -> vol.Schema:
     )
 
 
+def _unique_id(url: str) -> str:
+    """Return the unique ID for a normalised Ghostfolio URL (its host:port)."""
+    return urlparse(url).netloc or url
+
+
+def _default_title(unique_id: str) -> str:
+    """Return the entry title generated for a Ghostfolio instance."""
+    return f"Ghostfolio ({unique_id})"
+
+
 class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the user-driven config flow."""
 
@@ -78,7 +88,7 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             url = user_input[CONF_URL].rstrip("/")
-            unique_id = urlparse(url).netloc or url
+            unique_id = _unique_id(url)
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
 
@@ -96,7 +106,7 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 )
                 return self.async_create_entry(
-                    title=f"Ghostfolio ({unique_id})",
+                    title=_default_title(unique_id),
                     data={
                         CONF_URL: url,
                         CONF_ACCESS_TOKEN: user_input[CONF_ACCESS_TOKEN],
@@ -141,6 +151,64 @@ class GhostfolioConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reauth_confirm",
             data_schema=vol.Schema({vol.Required(CONF_ACCESS_TOKEN): str}),
+            description_placeholders={"url": entry.data[CONF_URL]},
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Point an existing entry at a new URL, e.g. after moving to HTTPS."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            url = user_input[CONF_URL].rstrip("/")
+            # Leaving the token empty keeps the one already stored.
+            access_token = (
+                user_input.get(CONF_ACCESS_TOKEN) or entry.data[CONF_ACCESS_TOKEN]
+            )
+            verify_ssl = user_input.get(CONF_VERIFY_SSL, True)
+            unique_id = _unique_id(url)
+
+            if unique_id != entry.unique_id:
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
+
+            error = await self._async_validate(url, access_token, verify_ssl)
+            if error:
+                errors["base"] = error
+            else:
+                # Keep a title the user renamed; only refresh the generated one.
+                title = (
+                    _default_title(unique_id)
+                    if entry.title == _default_title(entry.unique_id or "")
+                    else entry.title
+                )
+                return self.async_update_reload_and_abort(
+                    entry,
+                    unique_id=unique_id,
+                    title=title,
+                    data_updates={
+                        CONF_URL: url,
+                        CONF_ACCESS_TOKEN: access_token,
+                        CONF_VERIFY_SSL: verify_ssl,
+                    },
+                )
+
+        current = user_input or entry.data
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_URL, default=current[CONF_URL]): str,
+                vol.Optional(CONF_ACCESS_TOKEN): str,
+                vol.Optional(
+                    CONF_VERIFY_SSL, default=current.get(CONF_VERIFY_SSL, True)
+                ): bool,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
             description_placeholders={"url": entry.data[CONF_URL]},
             errors=errors,
         )

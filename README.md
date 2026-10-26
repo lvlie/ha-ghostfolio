@@ -14,9 +14,11 @@ A custom [HACS](https://hacs.xyz/) integration that exposes data from a
 - Creates the following entities:
   - **`sensor.ghostfolio_total_portfolio_value`** – total portfolio value in
     your base currency.
-  - **One sensor per `(account, position)` pair** – named
-    `<Account name> <SYMBOL>`, with the position's market value as its state
-    and additional attributes (quantity, market price, asset class, etc.).
+  - **One sensor per position** – named `Portfolio <SYMBOL>`, with the
+    position's market value in your base currency as its state and additional
+    attributes (quantity, market price, the asset's own currency, asset class,
+    etc.). Older Ghostfolio releases that report holdings per account produce
+    one sensor per `(account, position)` pair, named `<Account name> <SYMBOL>`.
 
 Self-hosted and `https://ghostfol.io` instances are both supported.
 
@@ -53,6 +55,13 @@ the UI.
 If Ghostfolio stops accepting the stored token, Home Assistant raises a repair
 notification and the integration asks for a new one through its
 reauthentication flow — the entry does not need to be removed and re-added.
+
+To move an existing entry to a different address — for example from
+`http://192.168.1.10:3333` to `https://ghostfolio.example.com` — open
+*Settings → Devices & Services → Ghostfolio → ⋮ → Reconfigure*. You can change
+the URL, the SSL verification and, optionally, the access token (leave it
+empty to keep the current one). The entry, its entities and their history are
+kept.
 
 ## Development
 

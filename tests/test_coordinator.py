@@ -191,6 +191,8 @@ def test_normalise_falls_back_to_quantity_times_price() -> None:
     pos = result["positions"][0]
     assert pos["account_id"] is None
     assert pos["value"] == 800
+    # quantity x price is in the asset's currency, not the base currency.
+    assert pos["value_currency"] == "USD"
 
 
 def test_normalise_totals_accounts_when_summary_has_no_value() -> None:
@@ -204,3 +206,58 @@ def test_normalise_totals_accounts_when_summary_has_no_value() -> None:
         "holdings": {},
     }
     assert _normalise(raw)["total_value"] == 1000
+
+
+def test_normalise_current_ghostfolio_holdings() -> None:
+    """Ghostfolio 3.7+ nests the asset attributes under `assetProfile`.
+
+    The shape mirrors GET /api/v1/portfolio/details on Ghostfolio 3.93.0:
+    holdings are an array, carry no per-account breakdown, and their value is
+    in the user's base currency even when the asset trades in another one.
+    """
+    raw = {
+        "summary": {"currentValueInBaseCurrency": 1234.5},
+        "accounts": {
+            "acc-1": {
+                "balance": 0,
+                "currency": "EUR",
+                "name": "Brokerage",
+                "valueInBaseCurrency": 1234.5,
+            }
+        },
+        "holdings": [
+            {
+                "activitiesCount": 2,
+                "allocationInPercentage": 1,
+                "assetProfile": {
+                    "assetClass": "EQUITY",
+                    "assetSubClass": "ETF",
+                    "currency": "USD",
+                    "dataSource": "YAHOO",
+                    "name": "Vanguard FTSE All-World",
+                    "symbol": "VWRA.L",
+                },
+                "marketPrice": 150,
+                "quantity": 9,
+                "valueInBaseCurrency": 1234.5,
+            }
+        ],
+    }
+
+    result = _normalise(raw, {"settings": {"baseCurrency": "EUR"}})
+
+    assert result["positions"] == [
+        {
+            "symbol": "VWRA.L",
+            "name": "Vanguard FTSE All-World",
+            "market_price": 150,
+            "currency": "USD",
+            "data_source": "YAHOO",
+            "asset_class": "EQUITY",
+            "account_id": None,
+            "account_name": "Portfolio",
+            "quantity": 9,
+            "value": 1234.5,
+            "value_currency": "EUR",
+        }
+    ]

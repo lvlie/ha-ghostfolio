@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-10-26
+
+### Added
+- Reconfigure flow: an existing entry can be pointed at a new URL (for example after moving Ghostfolio from a plain-HTTP IP address to an HTTPS host name), with a new SSL verification setting and optionally a new access token, from *Settings → Devices & Services → Ghostfolio → Reconfigure*. The entry, its entities and their history are kept; changing to a host that another entry already uses is refused.
+
+### Fixed
+- Position sensors stopped updating on Ghostfolio 3.7.0 and newer, which moved a holding's `symbol`, `name`, `currency`, `dataSource` and `assetClass` into a nested `assetProfile`. Both shapes are now read, checked against the Ghostfolio 3.93.0 API. Existing sensors keep their unique IDs.
+- Position sensors reported their value, which Ghostfolio sends in the base currency, with the asset's own currency as the unit (e.g. a USD-listed ETF in a EUR portfolio showed EUR values labelled `USD`). The unit is now the base currency; the asset's currency is still available in the `currency` attribute. Home Assistant may ask once how to handle the unit change in the long-term statistics of affected sensors.
+
 ## [0.2.0] - 2026-09-17
 
 ### Added
