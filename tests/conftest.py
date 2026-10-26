@@ -29,7 +29,7 @@ def mock_config_entry() -> MockConfigEntry:
     """Return a config entry pointing at a fake Ghostfolio instance."""
     return MockConfigEntry(
         domain=DOMAIN,
-        title=f"Ghostfolio ({MOCK_URL})",
+        title="Ghostfolio (ghostfolio.local:3333)",
         unique_id="ghostfolio.local:3333",
         data={
             CONF_URL: MOCK_URL,
