@@ -169,3 +169,102 @@ async def test_options_flow_changes_scan_interval(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert mock_config_entry.options == {CONF_SCAN_INTERVAL_MINUTES: 60}
+
+
+async def test_reconfigure_moves_entry_to_new_url(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """Switching from a plain-HTTP IP to an HTTPS host keeps the same entry."""
+    mock_config_entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    with patch(
+        "custom_components.ghostfolio.api.GhostfolioClient.async_validate",
+        side_effect=GhostfolioApiError("unreachable"),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_URL: "https://ghostfolio.example.com/"}
+        )
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {CONF_URL: "https://ghostfolio.example.com/", CONF_VERIFY_SSL: True},
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    # An empty token field keeps the stored token.
+    assert mock_config_entry.data == {
+        CONF_URL: "https://ghostfolio.example.com",
+        CONF_ACCESS_TOKEN: MOCK_TOKEN,
+        CONF_VERIFY_SSL: True,
+    }
+    assert mock_config_entry.unique_id == "ghostfolio.example.com"
+    assert mock_config_entry.title == "Ghostfolio (ghostfolio.example.com)"
+    assert mock_config_entry.options == {CONF_SCAN_INTERVAL_MINUTES: 5}
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+async def test_reconfigure_can_replace_token_and_keeps_custom_title(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """A new token is stored and a title the user chose is left alone."""
+    mock_config_entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(mock_config_entry, title="My portfolio")
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_URL: MOCK_URL,
+            CONF_ACCESS_TOKEN: "new-token",
+            CONF_VERIFY_SSL: False,
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert mock_config_entry.data[CONF_ACCESS_TOKEN] == "new-token"
+    assert mock_config_entry.data[CONF_VERIFY_SSL] is False
+    assert mock_config_entry.unique_id == "ghostfolio.local:3333"
+    assert mock_config_entry.title == "My portfolio"
+
+
+async def test_reconfigure_aborts_when_url_belongs_to_other_entry(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """Two entries cannot end up pointing at the same Ghostfolio host."""
+    mock_config_entry.add_to_hass(hass)
+    MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="other.example.com",
+        data={
+            CONF_URL: "https://other.example.com",
+            CONF_ACCESS_TOKEN: MOCK_TOKEN,
+            CONF_VERIFY_SSL: True,
+        },
+    ).add_to_hass(hass)
+
+    result = await mock_config_entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "https://other.example.com"}
+    )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert mock_config_entry.data[CONF_URL] == MOCK_URL

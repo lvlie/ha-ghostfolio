@@ -142,3 +142,42 @@ async def test_position_becomes_unavailable_when_it_disappears(
     await hass.async_block_till_done()
 
     assert hass.states.get(AAPL).state == "unavailable"
+
+
+async def test_current_ghostfolio_holding_is_valued_in_base_currency(
+    hass: HomeAssistant,
+    mock_config_entry: MockConfigEntry,
+    mock_client: dict[str, AsyncMock],
+) -> None:
+    """A Ghostfolio 3.7+ holding becomes a portfolio sensor in the base currency."""
+    mock_client["details"].return_value = {
+        "summary": {"currentValueInBaseCurrency": 900.0},
+        "accounts": {},
+        "holdings": [
+            {
+                "assetProfile": {
+                    "assetClass": "EQUITY",
+                    "currency": "USD",
+                    "dataSource": "YAHOO",
+                    "name": "Vanguard FTSE All-World",
+                    "symbol": "VWRA.L",
+                },
+                "marketPrice": 150,
+                "quantity": 6,
+                "valueInBaseCurrency": 900.0,
+            }
+        ],
+    }
+    await _setup(hass, mock_config_entry)
+
+    state = hass.states.get("sensor.ghostfolio_portfolio_vwra_l")
+    assert state is not None
+    assert state.state == "900.0"
+    assert state.attributes[ATTR_UNIT_OF_MEASUREMENT] == "EUR"
+    assert state.attributes["currency"] == "USD"
+    assert state.attributes["symbol"] == "VWRA.L"
+
+    entity_registry = er.async_get(hass)
+    entry = entity_registry.async_get("sensor.ghostfolio_portfolio_vwra_l")
+    # Same unique ID as sensors created by earlier releases, so history is kept.
+    assert entry.unique_id == f"{mock_config_entry.entry_id}_portfolio::VWRA.L"

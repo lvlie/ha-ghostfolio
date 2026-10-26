@@ -183,10 +183,10 @@ class GhostfolioPositionSensor(_GhostfolioBaseEntity):
 
     @property
     def native_unit_of_measurement(self) -> str | None:
-        """Return the currency the position is valued in."""
+        """Return the currency the position's value is expressed in."""
         position = self._find_position()
-        if position and position.get("currency"):
-            return position["currency"]
+        if position and position.get("value_currency"):
+            return position["value_currency"]
         data = self.coordinator.data or {}
         return data.get("currency")
 

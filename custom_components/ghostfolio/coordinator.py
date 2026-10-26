@@ -105,37 +105,53 @@ def _holding_positions(
     base_currency: str,
 ) -> list[dict[str, Any]]:
     """Return one position per account the holding is held in."""
-    symbol = holding.get("symbol") or holding.get("name")
+    # Ghostfolio 3.7.0 moved the asset attributes (symbol, name, currency, ...)
+    # of a holding into a nested `assetProfile`; older releases sent them on
+    # the holding itself.
+    profile = holding.get("assetProfile")
+    if not isinstance(profile, dict):
+        profile = {}
+
+    def _attr(key: str) -> Any:
+        value = profile.get(key)
+        return holding.get(key) if value is None else value
+
+    symbol = _attr("symbol") or _attr("name")
     if not symbol:
         return []
 
     quantity = holding.get("quantity") or 0
     market_price = holding.get("marketPrice") or holding.get("netPerformance")
+    asset_currency = _attr("currency") or base_currency
     shared = {
         "symbol": symbol,
-        "name": holding.get("name") or symbol,
+        "name": _attr("name") or symbol,
         "market_price": market_price,
-        "currency": holding.get("currency") or base_currency,
-        "data_source": holding.get("dataSource"),
-        "asset_class": holding.get("assetClass") or holding.get("assetSubClass"),
+        "currency": asset_currency,
+        "data_source": _attr("dataSource"),
+        "asset_class": _attr("assetClass") or _attr("assetSubClass"),
     }
 
     holding_accounts = [
         acc for acc in holding.get("accounts") or [] if isinstance(acc, dict)
     ]
     if not holding_accounts:
-        value = (
-            holding.get("valueInBaseCurrency")
-            or holding.get("value")
-            or (quantity * market_price if quantity and market_price else 0)
-        )
+        value = holding.get("valueInBaseCurrency")
+        value_currency = base_currency
+        if value is None:
+            value = holding.get("value")
+        if value is None and quantity and market_price:
+            # The market price is quoted in the asset's own currency.
+            value = quantity * market_price
+            value_currency = asset_currency
         return [
             {
                 **shared,
                 "account_id": None,
                 "account_name": "Portfolio",
                 "quantity": quantity,
-                "value": value,
+                "value": value or 0,
+                "value_currency": value_currency,
             }
         ]
 
@@ -153,6 +169,7 @@ def _holding_positions(
                 "value": acc_ref.get("valueInBaseCurrency")
                 or acc_ref.get("value")
                 or 0,
+                "value_currency": base_currency,
             }
         )
     return positions
@@ -173,7 +190,7 @@ def _normalise(
                     "account_id": ..., "account_name": ...,
                     "symbol": ..., "name": ...,
                     "quantity": ..., "market_price": ...,
-                    "value": ..., "currency": ...,
+                    "value": ..., "value_currency": ..., "currency": ...,
                     "data_source": ..., "asset_class": ...,
                 },
                 ...
