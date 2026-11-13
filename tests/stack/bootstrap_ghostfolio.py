@@ -140,7 +140,7 @@ def main() -> int:
                 "date": "2024-01-15T00:00:00.000Z",
                 "fee": 0,
                 "quantity": 10,
-                "symbol": "DEMO",
+                "symbol": "GF_DEMO",
                 "type": "BUY",
                 "unitPrice": 100,
             }
