@@ -26,7 +26,6 @@ ERROR_PATTERNS = [
     re.compile(r"\bCRITICAL\b.*ghostfolio", re.IGNORECASE),
     re.compile(r"Error setting up entry .* for ghostfolio", re.IGNORECASE),
     re.compile(r"Unexpected exception.*ghostfolio", re.IGNORECASE),
-    re.compile(r"Traceback \(most recent call last\)"),
     # The coordinator logs this when a refresh fails.
     re.compile(r"Finished fetching ghostfolio data.*success: False", re.IGNORECASE),
 ]
@@ -63,19 +62,35 @@ def _missing(log: str) -> list[str]:
     ]
 
 
+TRACEBACK = re.compile(r"Traceback \(most recent call last\)")
+# A traceback only counts when its frames or message involve this
+# integration. Core components in the CI container raise unrelated ones,
+# e.g. bluetooth without NET_ADMIN/NET_RAW.
+OURS = re.compile(r"ghostfolio", re.IGNORECASE)
+
+
 def _collect_errors(log: str) -> list[str]:
     """Return the offending lines, including the body of any traceback."""
     errors: list[str] = []
-    in_traceback = False
+    traceback: list[str] = []
+
+    def flush() -> None:
+        if any(OURS.search(line) for line in traceback):
+            errors.extend(traceback)
+        traceback.clear()
+
     for line in log.splitlines():
-        if any(pattern.search(line) for pattern in ERROR_PATTERNS):
-            errors.append(line)
-            in_traceback = "Traceback" in line
-            continue
-        if in_traceback:
-            errors.append(line)
+        if traceback:
+            traceback.append(line)
+            # The exception line is the first unindented one after the frames.
             if line and not line.startswith((" ", "\t")):
-                in_traceback = False
+                flush()
+            continue
+        if TRACEBACK.search(line):
+            traceback.append(line)
+        elif any(pattern.search(line) for pattern in ERROR_PATTERNS):
+            errors.append(line)
+    flush()
     return errors
 
 
