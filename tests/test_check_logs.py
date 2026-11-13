@@ -38,6 +38,20 @@ SETUP_ERROR = (
     "Error setting up entry Ghostfolio for ghostfolio\n"
 )
 
+UNRELATED_TRACEBACK = """\
+2026-11-01 13:05:47.100 ERROR (MainThread) [homeassistant.components.bluetooth] Failed to set up Bluetooth
+Traceback (most recent call last):
+  File "src/habluetooth/manager.py", line 460, in habluetooth.manager.BluetoothManager.async_setup
+  File "src/habluetooth/channels/bluez.py", line 750, in setup
+PermissionError: Missing NET_ADMIN/NET_RAW capabilities for Bluetooth management
+"""
+
+OUR_TRACEBACK = """\
+Traceback (most recent call last):
+  File "/config/custom_components/ghostfolio/coordinator.py", line 80, in _async_update_data
+KeyError: 'performance'
+"""
+
 
 def _load_check_logs() -> Any:
     """Import check_logs.py, which lives outside the importable test package."""
@@ -103,3 +117,13 @@ def test_setup_error_is_an_error(tmp_path: Path) -> None:
 def test_missing_log_file_fails(tmp_path: Path) -> None:
     """A log that was never written fails instead of hanging."""
     assert _run(tmp_path, None) == 1
+
+
+def test_unrelated_traceback_is_ignored(tmp_path: Path) -> None:
+    """A core component's traceback (seen from bluetooth in CI) is not ours."""
+    assert _run(tmp_path, PASSING_LOG + UNRELATED_TRACEBACK) == 0
+
+
+def test_integration_traceback_is_an_error(tmp_path: Path) -> None:
+    """A traceback through the integration's code still fails the check."""
+    assert _run(tmp_path, PASSING_LOG + OUR_TRACEBACK) == 1

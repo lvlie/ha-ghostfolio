@@ -74,7 +74,6 @@ def create_account(url: str, jwt: str, name: str, currency: str) -> dict[str, An
             "balance": 0,
             "comment": None,
             "currency": currency,
-            "isExcluded": False,
             "name": name,
             "platformId": None,
         },
